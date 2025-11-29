@@ -1,7 +1,9 @@
 # Lincukoo USB-Dongle Firmware upgrade Tool
 
 **Firmware Repository**: [https://github.com/lincukoo/dongle/tree/main/firmware]
+
 **USB-Dongle Firmware upgrade Tool**: [https://lincukoo.github.io/dongle/]
+
 A web-based firmware upgrade tool for Lincukoo USB-Dongle devices. This tool allows you to upgrade device firmware directly from your web browser using the Web Serial API.
 
 ## Features
@@ -11,7 +13,6 @@ A web-based firmware upgrade tool for Lincukoo USB-Dongle devices. This tool all
 - **Firmware Selection**: 
   - Download firmware from GitHub repository
   - Select local firmware files (.gbl)
-  - Auto-select latest firmware version
 - **Real-time Progress**: Visual progress bar and detailed status logs
 - **XModem Protocol**: Reliable firmware transfer using XModem protocol
 - **Cross-platform**: Works on Windows, macOS, and Linux (with compatible browsers)
@@ -34,7 +35,7 @@ A web-based firmware upgrade tool for Lincukoo USB-Dongle devices. This tool all
 
 ### Driver Installation
 
-**For Windows/macOS users**: Install the Silicon Labs CH340 Driver to enable device detection.
+**For Windows/macOS users**: Install CH340 Driver to enable device detection.
 
 ## Quick Start
 
@@ -53,9 +54,8 @@ Simply open `index.html` in your web browser (Chrome/Edge recommended).
 
 
 #### Download from GitHub
-1. Click **"Refresh"** to load the latest firmware list from GitHub
-2. Select a firmware version from the dropdown
-3. The firmware will be automatically downloaded
+1. Select a firmware version from the dropdown
+2. The firmware will be automatically downloaded
 
 
 ### 4. Start Upgrade
