@@ -8,7 +8,7 @@
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
      background:#f5f5f5;color:#333;padding:20px;margin:0}
 .container{max-width:800px;margin:auto;background:#fff;border-radius:8px;padding:30px;box-shadow:0 2px 8px rgba(0,0,0,.1)}
-h1{text-align:center;margin-bottom:10px;color:#333;font-size:28px;font-weight:600}
+h1{text-align:center;margin-bottom:10px;color:#333;font-size:28px;font-weight:bold}
 .firmware-repo{text-align:center;margin-bottom:8px;font-size:14px}
 .firmware-repo:last-of-type{margin-bottom:30px}
 .firmware-repo a{color:#2196f3;text-decoration:none;transition:color .3s ease}
@@ -45,6 +45,7 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
 .file-info{color:#666;font-size:13px;margin-top:8px}
 .upgrade-status{color:#666;font-size:14px;margin-top:12px}
 .upgrade-status.success{color:#4caf50;font-weight:600;font-size:16px}
+.upgrade-status.error{color:#f44336;font-weight:600;font-size:16px}
 .notice-box{background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:15px;margin-top:20px;color:#856404}
 .notice-box::before{content:"⚠ ";font-weight:bold;margin-right:5px}
 </style>
@@ -52,16 +53,13 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
 <body>
 <div class="container">
   <h1>Lincukoo USB-Dongle Firmware upgrade Tool</h1>
+  <div style="text-align:center;margin-bottom:8px;font-size:14px;color:#c62828">
+    Browser Support：Chrome/Edge 89+ (Recommended) , and Disable the antivirus software on the computer.
+  </div>
   <div class="firmware-repo">
     <strong>Instruction:</strong> 
     <a href="https://github.com/lincukoo/dongle" target="_blank" rel="noopener noreferrer">
       https://github.com/lincukoo/dongle
-    </a>
-  </div>
-  <div class="firmware-repo">
-    <strong>Firmware Repository:</strong> 
-    <a href="https://github.com/lincukoo/dongle/tree/main/firmware" target="_blank" rel="noopener noreferrer">
-      https://github.com/lincukoo/dongle/tree/main/firmware
     </a>
   </div>
 
@@ -97,34 +95,13 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
 
   <!-- Select the firmware -->
   <div class="section">
-    <div class="section-title">Select the firmware</div>
     <div style="margin-bottom:15px">
-      <label style="font-size:14px"><strong>Detected Chip Model</strong>
-        <div style="display:flex;gap:6px;margin-top:6px">
-          <button type="button" id="btnMG21" class="btn-chip-inactive" style="flex:1;background:#ccc;color:#666;padding:8px 12px;border:none;border-radius:4px;cursor:not-allowed;font-weight:600;font-size:13px" disabled>MG21</button>
-          <button type="button" id="btnMG24" class="btn-chip-inactive" style="flex:1;background:#ccc;color:#666;padding:8px 12px;border:none;border-radius:4px;cursor:not-allowed;font-weight:600;font-size:13px" disabled>MG24</button>
-        </div>
-        <div id="chipAutoDetectInfo" style="margin-top:6px;font-size:12px;color:#666;font-style:italic">Chip model will be automatically detected when entering bootloader mode</div>
-      </label>
-    </div>
-    <div style="margin-bottom:15px">
-      <label><strong>Select from GitHub repository</strong>
+      <label><strong>Download and select firmware from GitHub repository</strong>
         <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
           <select id="verList" style="flex:1"><option value="">Please select chip model first</option></select>
           <button type="button" id="btnRefresh" onclick="loadVersions()" style="background:#2196f3;color:#fff;padding:8px 16px;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">Refresh</button>
         </div>
       </label>
-      <!-- Firmware Download Status -->
-      <div id="firmwareStatus" style="display:none;margin-top:12px;padding:12px;background:#f5f5f5;border:1px solid #ddd;border-radius:4px">
-        <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#333" id="firmwareStatusText">Loading firmware list...</div>
-        <div id="firmwareProgressContainer" style="display:none;margin-top:8px">
-          <div class="progress-bar" style="height:20px">
-            <div class="progress-fill" id="firmwareProgBar" style="background:#2196f3"></div>
-            <div class="progress-text" id="firmwareProgText" style="line-height:20px;font-size:12px">0%</div>
-          </div>
-        </div>
-        <div id="firmwareStatusMessage" style="font-size:13px;color:#666;margin-top:8px"></div>
-      </div>
     </div>
   </div>
 
@@ -145,8 +122,8 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
   </div>
 
 
-  <!-- Status Log -->
-  <div class="section">
+  <!-- Status Log (Hidden by default, for development only) -->
+  <div class="section" id="statusLogSection" style="display:none;">
     <div class="section-title">Status Log
       <label style="float:right;font-size:13px;font-weight:normal;margin:0">
         <input type="checkbox" id="debugMode">Serial Debug Mode
@@ -165,6 +142,8 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
 /* ========== 配置 ========== */
 // GitHub固件仓库地址
 const GITHUB_REPO_BASE = 'https://api.github.com/repos/lincukoo/dongle/contents/firmware';
+// 开发模式开关：设置为 true 可显示状态日志栏（仅开发用）
+const DEV_MODE_ENABLE_LOG = false; // 修改为 true 可显示日志栏
 let selectedChip = null; // 'MG21' or 'MG24'
 let currentState = 'ready'; // 'ready', 'boot', 'downloading', 'download_success', 'download_failed', 'flashing', 'flash_success', 'flash_failed'
 
@@ -180,10 +159,17 @@ let firmwareBytes = null;
 let firmwareFileName = '';
 let githubFirmwareUrl = null;
 let firmwareCache = {}; // 存储所有已下载的固件文件，key: fileName, value: Uint8Array
+let upgradeTimeoutId = null; // 升级超时计时器ID
+let lastChipModel = null; // 上次检测到的芯片型号
 
 /* ========== 日志 ========== */
 function log(msg, type = 'info') {
+  const isDebugMode = document.getElementById('debugMode')?.checked || false;
+  if (!isDebugMode) return; // 如果未勾选debug mode，不显示日志
+  
   const box = document.getElementById('logBox');
+  if (!box) return; // 如果日志栏不存在（已隐藏），直接返回
+  
   const line = document.createElement('div');
   line.className = 'log-entry ' + type;
   line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -202,6 +188,191 @@ function logRawData(data, prefix = '') {
 }
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/* ========== localStorage 固件缓存管理 ========== */
+// localStorage key前缀
+const STORAGE_PREFIX = 'firmware_cache_';
+const STORAGE_CHIP_KEY = 'last_chip_model';
+const STORAGE_MAX_SIZE = 10 * 1024 * 1024; // 4MB限制，避免超过localStorage限制
+
+// 将Uint8Array转换为base64字符串
+function uint8ArrayToBase64(uint8Array) {
+  const chunkSize = 8192; // 分块处理，避免栈溢出
+  let result = '';
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.slice(i, i + chunkSize);
+    const binary = String.fromCharCode.apply(null, chunk);
+    result += btoa(binary);
+  }
+  return result;
+}
+
+// 将base64字符串转换为Uint8Array
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// 保存固件缓存到localStorage
+function saveFirmwareCacheToStorage(chipModel, cache) {
+  try {
+    if (!chipModel || !cache || Object.keys(cache).length === 0) {
+      log('No firmware cache to save', 'info');
+      return;
+    }
+    
+    // 计算总大小
+    let totalSize = 0;
+    const cacheData = {};
+    for (const [fileName, data] of Object.entries(cache)) {
+      const base64 = uint8ArrayToBase64(data);
+      const size = base64.length;
+      totalSize += size;
+      
+      // 如果超过限制，不保存
+      if (totalSize > STORAGE_MAX_SIZE) {
+        log(`Firmware cache too large (${(totalSize / 1024 / 1024).toFixed(2)} MB), skipping save to localStorage`, 'warning');
+        return;
+      }
+      
+      cacheData[fileName] = {
+        data: base64,
+        size: data.length,
+        timestamp: Date.now()
+      };
+    }
+    
+    // 保存芯片型号
+    localStorage.setItem(STORAGE_CHIP_KEY, chipModel);
+    
+    // 保存固件缓存（每个文件单独存储，避免单个key过大）
+    for (const [fileName, fileData] of Object.entries(cacheData)) {
+      const key = STORAGE_PREFIX + chipModel + '_' + fileName;
+      try {
+        localStorage.setItem(key, JSON.stringify(fileData));
+        log(`Saved firmware to localStorage: ${fileName} (${(fileData.size / 1024).toFixed(2)} KB)`, 'info');
+      } catch (e) {
+        if (e.name === 'QuotaExceededError') {
+          log(`localStorage quota exceeded, cannot save ${fileName}`, 'warning');
+          // 清理旧的缓存
+          clearOldFirmwareCache();
+          return;
+        }
+        throw e;
+      }
+    }
+    
+    log(`Firmware cache saved to localStorage for chip: ${chipModel} (${Object.keys(cacheData).length} files)`, 'success');
+  } catch (e) {
+    log(`Failed to save firmware cache to localStorage: ${e.message}`, 'error');
+  }
+}
+
+// 从localStorage加载固件缓存
+function loadFirmwareCacheFromStorage(chipModel) {
+  try {
+    if (!chipModel) {
+      return null;
+    }
+    
+    // 检查芯片型号是否匹配
+    const lastChip = localStorage.getItem(STORAGE_CHIP_KEY);
+    if (lastChip !== chipModel) {
+      log(`Chip model mismatch: last=${lastChip}, current=${chipModel}, skipping cache load`, 'info');
+      return null;
+    }
+    
+    // 查找所有匹配的固件文件
+    const cache = {};
+    const keys = Object.keys(localStorage);
+    const prefix = STORAGE_PREFIX + chipModel + '_';
+    
+    for (const key of keys) {
+      if (key.startsWith(prefix)) {
+        try {
+          const fileData = JSON.parse(localStorage.getItem(key));
+          if (fileData && fileData.data) {
+            const fileName = key.substring(prefix.length);
+            cache[fileName] = base64ToUint8Array(fileData.data);
+            log(`Loaded firmware from localStorage: ${fileName} (${(fileData.size / 1024).toFixed(2)} KB)`, 'info');
+          }
+        } catch (e) {
+          log(`Failed to load firmware from localStorage key ${key}: ${e.message}`, 'error');
+        }
+      }
+    }
+    
+    if (Object.keys(cache).length > 0) {
+      log(`Firmware cache loaded from localStorage for chip: ${chipModel} (${Object.keys(cache).length} files)`, 'success');
+      return cache;
+    }
+    
+    return null;
+  } catch (e) {
+    log(`Failed to load firmware cache from localStorage: ${e.message}`, 'error');
+    return null;
+  }
+}
+
+// 清理旧的固件缓存（当存储空间不足时）
+function clearOldFirmwareCache() {
+  try {
+    const keys = Object.keys(localStorage);
+    const firmwareKeys = keys.filter(k => k.startsWith(STORAGE_PREFIX));
+    
+    // 按时间戳排序，删除最旧的
+    const keyTimestamps = [];
+    for (const key of firmwareKeys) {
+      try {
+        const data = JSON.parse(localStorage.getItem(key));
+        if (data && data.timestamp) {
+          keyTimestamps.push({ key, timestamp: data.timestamp });
+        }
+      } catch (e) {
+        // 忽略解析错误
+      }
+    }
+    
+    keyTimestamps.sort((a, b) => a.timestamp - b.timestamp);
+    
+    // 删除最旧的一半
+    const toDelete = Math.floor(keyTimestamps.length / 2);
+    for (let i = 0; i < toDelete; i++) {
+      localStorage.removeItem(keyTimestamps[i].key);
+      log(`Cleared old firmware cache: ${keyTimestamps[i].key}`, 'info');
+    }
+  } catch (e) {
+    log(`Failed to clear old firmware cache: ${e.message}`, 'error');
+  }
+}
+
+// 清理指定芯片的固件缓存
+function clearFirmwareCacheForChip(chipModel) {
+  try {
+    if (!chipModel) return;
+    
+    const keys = Object.keys(localStorage);
+    const prefix = STORAGE_PREFIX + chipModel + '_';
+    let count = 0;
+    
+    for (const key of keys) {
+      if (key.startsWith(prefix)) {
+        localStorage.removeItem(key);
+        count++;
+      }
+    }
+    
+    if (count > 0) {
+      log(`Cleared ${count} firmware cache entries for chip: ${chipModel}`, 'info');
+    }
+  } catch (e) {
+    log(`Failed to clear firmware cache for chip ${chipModel}: ${e.message}`, 'error');
+  }
+}
 
 function updateProgress(p) {
   const bar = document.getElementById('progBar');
@@ -324,37 +495,9 @@ function updateFirmwareStatus(text, showProgress = false, progress = 0, message 
   if (statusMessage) statusMessage.textContent = message;
 }
 
-// 更新芯片选择UI（用于自动检测）
+// 更新芯片选择（用于自动检测）
 function updateChipSelectionUI(chip) {
   selectedChip = chip;
-  
-  // 更新按钮样式
-  const btnMG21 = document.getElementById('btnMG21');
-  const btnMG24 = document.getElementById('btnMG24');
-  
-  if (chip === 'MG21') {
-    if (btnMG21) {
-      btnMG21.className = 'btn-chip-active';
-      btnMG21.style.background = '#2196f3';
-      btnMG21.style.color = '#fff';
-    }
-    if (btnMG24) {
-      btnMG24.className = 'btn-chip-inactive';
-      btnMG24.style.background = '#ccc';
-      btnMG24.style.color = '#666';
-    }
-  } else {
-    if (btnMG21) {
-      btnMG21.className = 'btn-chip-inactive';
-      btnMG21.style.background = '#ccc';
-      btnMG21.style.color = '#666';
-    }
-    if (btnMG24) {
-      btnMG24.className = 'btn-chip-active';
-      btnMG24.style.background = '#2196f3';
-      btnMG24.style.color = '#fff';
-    }
-  }
   
   // 清空固件选择
   const verList = document.getElementById('verList');
@@ -450,10 +593,40 @@ async function loadVersions() {
     document.getElementById('btnRefresh').disabled = false;
     
     log(`Firmware list loaded successfully: ${firmwareFiles.length} files`, 'success');
+    
+    // 检查localStorage中是否有匹配的固件缓存
+    const cachedFirmware = loadFirmwareCacheFromStorage(selectedChip);
+    if (cachedFirmware && Object.keys(cachedFirmware).length > 0) {
+      // 检查缓存中的固件是否都在当前固件列表中
+      let allCached = true;
+      for (const file of firmwareFiles) {
+        if (!cachedFirmware[file.name]) {
+          allCached = false;
+          break;
+        }
+      }
+      
+      if (allCached && firmwareFiles.length === Object.keys(cachedFirmware).length) {
+        // 所有固件都在缓存中，直接使用缓存
+        log(`All firmware files found in localStorage cache, using cached data (${Object.keys(cachedFirmware).length} files)`, 'success');
+        firmwareCache = cachedFirmware;
+        currentState = 'download_success';
+        updateFirmwareStatus(`Firmware download completed successfully`, false, 100, 'Please select a firmware version to flash');
+        return; // 不需要下载
+      } else {
+        // 部分固件在缓存中，合并缓存和下载缺失的
+        log(`Partial firmware cache found (${Object.keys(cachedFirmware).length} files), will download missing files`, 'info');
+        firmwareCache = cachedFirmware; // 先使用缓存
+      }
+    } else {
+      // 没有缓存，清空缓存准备下载
+      firmwareCache = {};
+    }
+    
     updateFirmwareStatus(`Firmware list loaded successfully: ${firmwareFiles.length} files`, true, 0, 'Downloading all firmware files...');
     currentState = 'downloading';
     
-    // 自动下载所有固件文件
+    // 自动下载所有固件文件（如果缓存中没有）
     log(`Starting to download all ${firmwareFiles.length} firmware files...`, 'info');
     await downloadAllFirmwareFiles();
   } catch (e) {
@@ -477,17 +650,38 @@ async function downloadAllFirmwareFiles() {
     return;
   }
   
-  firmwareCache = {}; // 清空缓存
+  // 不清空缓存，只下载缺失的文件
   let successCount = 0;
   let failCount = 0;
+  let skippedCount = 0;
   const totalFiles = firmwareFiles.length;
+  const filesToDownload = [];
   
-  for (let i = 0; i < firmwareFiles.length; i++) {
-    const file = firmwareFiles[i];
+  // 找出需要下载的文件（缓存中不存在的）
+  for (const file of firmwareFiles) {
+    if (firmwareCache[file.name]) {
+      skippedCount++;
+      log(`Skipping ${file.name} (already in cache)`, 'info');
+    } else {
+      filesToDownload.push(file);
+    }
+  }
+  
+  if (filesToDownload.length === 0) {
+    log(`All firmware files already in cache (${skippedCount} files), skipping download`, 'success');
+    currentState = 'download_success';
+    updateFirmwareStatus(`Firmware download completed successfully`, false, 100, `Please select a firmware version to flash`);
+    return;
+  }
+  
+  log(`Downloading ${filesToDownload.length} missing firmware files (${skippedCount} already in cache)...`, 'info');
+  
+  for (let i = 0; i < filesToDownload.length; i++) {
+    const file = filesToDownload[i];
     const fileSizeKB = file.size ? (parseInt(file.size) / 1024).toFixed(2) : 'unknown';
     
-    log(`Downloading firmware ${i + 1}/${totalFiles}: ${file.name} (${fileSizeKB} KB)...`, 'info');
-    updateFirmwareStatus(`Downloading firmware ${i + 1}/${totalFiles}: ${file.name}`, true, Math.round((i / totalFiles) * 100), `Progress: ${i}/${totalFiles} files`);
+    log(`Downloading firmware ${i + 1}/${filesToDownload.length}: ${file.name} (${fileSizeKB} KB)...`, 'info');
+    updateFirmwareStatus(`Downloading firmware ${i + 1}/${filesToDownload.length}: ${file.name}`, true, Math.round((i / filesToDownload.length) * 100), `Progress: ${i}/${filesToDownload.length} files`);
     
     try {
       const response = await fetch(file.url);
@@ -527,11 +721,24 @@ async function downloadAllFirmwareFiles() {
   }
   
   // 更新状态
-  if (successCount > 0) {
+  if (successCount > 0 || skippedCount > 0) {
     currentState = 'download_success';
-    log(`All firmware files downloaded: ${successCount} success, ${failCount} failed`, 'success');
+    const totalCached = successCount + skippedCount;
+    log(`Firmware download completed: ${successCount} downloaded, ${skippedCount} from cache, ${failCount} failed`, 'success');
     log(`Cache status: ${Object.keys(firmwareCache).length} files stored in cache: ${Object.keys(firmwareCache).join(', ')}`, 'success');
-    updateFirmwareStatus(`All firmware files downloaded: ${successCount} success, ${failCount} failed`, false, 100, `Please select a firmware version to flash`);
+    
+    // 保存固件缓存到localStorage（即使没有升级，也保存下载的固件）
+    if (selectedChip && firmwareCache && Object.keys(firmwareCache).length > 0) {
+      log('Saving firmware cache to localStorage...', 'info');
+      saveFirmwareCacheToStorage(selectedChip, firmwareCache);
+      lastChipModel = selectedChip; // 更新芯片型号
+    }
+    
+    if (failCount > 0) {
+      updateFirmwareStatus(`Firmware download completed with ${failCount} failed`, false, 100, `Please select a firmware version to flash`);
+    } else {
+      updateFirmwareStatus(`Firmware download completed successfully`, false, 100, `Please select a firmware version to flash`);
+    }
   } else {
     currentState = 'download_failed';
     log(`Failed to download all firmware files`, 'error');
@@ -631,12 +838,12 @@ async function connectPort() {
     return;
   }
   
-  // 每次重新连接时，清空之前下载的固件缓存，避免芯片切换时历史数据导致异常
+  // 每次重新连接时，清空当前固件选择，但保留缓存（稍后检查芯片型号后决定是否使用）
   firmwareBytes = null;
   firmwareFileName = '';
   githubFirmwareUrl = null;
   firmwareFiles = [];
-  firmwareCache = {}; // 清空固件缓存
+  // 不清空firmwareCache，等待芯片检测后再决定是否从localStorage加载
   
   // 清空固件选择下拉框
   const verList = document.getElementById('verList');
@@ -798,36 +1005,16 @@ async function handlePortDisconnect() {
   
   // 重置芯片选择状态
   selectedChip = null;
-  const btnMG21 = document.getElementById('btnMG21');
-  const btnMG24 = document.getElementById('btnMG24');
-  const chipAutoDetectInfo = document.getElementById('chipAutoDetectInfo');
-  if (btnMG21) {
-    btnMG21.className = 'btn-chip-inactive';
-    btnMG21.style.background = '#ccc';
-    btnMG21.style.color = '#666';
-  }
-  if (btnMG24) {
-    btnMG24.className = 'btn-chip-inactive';
-    btnMG24.style.background = '#ccc';
-    btnMG24.style.color = '#666';
-  }
-  if (chipAutoDetectInfo) {
-    chipAutoDetectInfo.textContent = 'Chip model will be automatically detected when entering bootloader mode';
-    chipAutoDetectInfo.style.color = '#666';
-    chipAutoDetectInfo.style.fontStyle = 'italic';
-    chipAutoDetectInfo.style.fontWeight = 'normal';
-    chipAutoDetectInfo.style.fontSize = '12px';
-  }
   
-  // 串口断开，清空所有状态信息，重头来
-  log('Clearing all states due to port disconnect...', 'info');
+  // 串口断开，清空当前状态信息，但保留固件缓存（以便下次使用）
+  log('Clearing current states due to port disconnect (keeping firmware cache)...', 'info');
   
-  // 清空固件相关状态
+  // 清空当前选择的固件信息（但保留缓存）
   firmwareBytes = null;
   firmwareFileName = '';
   githubFirmwareUrl = null;
   firmwareFiles = [];
-  firmwareCache = {}; // 清空固件缓存
+  // 不清空firmwareCache，保留以便下次使用
   
   // 清空芯片选择状态
   selectedChip = null;
@@ -835,7 +1022,7 @@ async function handlePortDisconnect() {
   // 重置系统状态
   currentState = 'ready';
   
-  log(`All states cleared. currentState: ${currentState}, firmwareFileName: ${firmwareFileName || 'empty'}, firmwareBytes: ${firmwareBytes ? 'exists' : 'null'}`, 'info');
+  log(`Current states cleared (firmware cache preserved). currentState: ${currentState}, firmwareFileName: ${firmwareFileName || 'empty'}, firmwareBytes: ${firmwareBytes ? 'exists' : 'null'}`, 'info');
   
   // 清空固件选择下拉框
   const verList = document.getElementById('verList');
@@ -915,41 +1102,21 @@ async function disconnectPort() {
   
   // 重置芯片选择状态
   selectedChip = null;
-  const btnMG21 = document.getElementById('btnMG21');
-  const btnMG24 = document.getElementById('btnMG24');
-  const chipAutoDetectInfo = document.getElementById('chipAutoDetectInfo');
-  if (btnMG21) {
-    btnMG21.className = 'btn-chip-inactive';
-    btnMG21.style.background = '#ccc';
-    btnMG21.style.color = '#666';
-  }
-  if (btnMG24) {
-    btnMG24.className = 'btn-chip-inactive';
-    btnMG24.style.background = '#ccc';
-    btnMG24.style.color = '#666';
-  }
-  if (chipAutoDetectInfo) {
-    chipAutoDetectInfo.textContent = 'Chip model will be automatically detected when entering bootloader mode';
-    chipAutoDetectInfo.style.color = '#666';
-    chipAutoDetectInfo.style.fontStyle = 'italic';
-    chipAutoDetectInfo.style.fontWeight = 'normal';
-    chipAutoDetectInfo.style.fontSize = '12px';
-  }
   
-  // 串口断开，清空所有状态信息，重头来
-  log('Clearing all states due to port disconnect...', 'info');
+  // 串口断开，清空当前状态信息，但保留固件缓存（以便下次使用）
+  log('Clearing current states due to port disconnect (keeping firmware cache)...', 'info');
   
-  // 清空固件相关状态
+  // 清空当前选择的固件信息（但保留缓存）
   firmwareBytes = null;
   firmwareFileName = '';
   githubFirmwareUrl = null;
   firmwareFiles = [];
-  firmwareCache = {}; // 清空固件缓存
+  // 不清空firmwareCache，保留以便下次使用
   
   // 重置系统状态
   currentState = 'ready';
   
-  log(`All states cleared. currentState: ${currentState}, firmwareFileName: ${firmwareFileName || 'empty'}, firmwareBytes: ${firmwareBytes ? 'exists' : 'null'}`, 'info');
+  log(`Current states cleared (firmware cache preserved). currentState: ${currentState}, firmwareFileName: ${firmwareFileName || 'empty'}, firmwareBytes: ${firmwareBytes ? 'exists' : 'null'}`, 'info');
   
   // 清空固件选择下拉框
   const verList = document.getElementById('verList');
@@ -970,7 +1137,7 @@ async function disconnectPort() {
 // 逻辑参考 enterUpgradeMode：只读不写，检测欢迎菜单中的 "Bootloader Version"/"bootloader version"
 async function enterUpgradeModeForConnection() {
   const startTime = Date.now();
-  const timeout = 15 * 1000; // 20秒超时
+  const timeout = 12 * 1000; // 20秒超时
   let receivedData = '';
   let bootModeDetected = false;
   
@@ -1020,7 +1187,7 @@ async function enterUpgradeModeForConnection() {
       try {
           const { value, done } = await Promise.race([
             reader.read(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
           ]);
           
           if (done) {
@@ -1080,6 +1247,34 @@ async function enterUpgradeModeForConnection() {
               selectedChip = detectedChip;
               updateChipSelectionUI(detectedChip);
               
+              // 检查芯片型号是否和上次一样，如果一样，从localStorage加载固件缓存
+              if (detectedChip === lastChipModel && lastChipModel !== null) {
+                log(`Chip model matches last time (${detectedChip}), loading firmware cache from localStorage...`, 'info');
+                const cachedFirmware = loadFirmwareCacheFromStorage(detectedChip);
+                if (cachedFirmware && Object.keys(cachedFirmware).length > 0) {
+                  firmwareCache = cachedFirmware;
+                  log(`Loaded ${Object.keys(cachedFirmware).length} firmware files from localStorage cache`, 'success');
+                } else {
+                  log(`No cached firmware found in localStorage for ${detectedChip}`, 'info');
+                  firmwareCache = {}; // 清空缓存，准备重新下载
+                }
+              } else {
+                if (lastChipModel === null) {
+                  log(`First time detecting chip: ${detectedChip}, will check localStorage for cached firmware`, 'info');
+                } else {
+                  log(`Chip model changed: last=${lastChipModel}, current=${detectedChip}, will download new firmware`, 'info');
+                }
+                // 尝试从localStorage加载（即使芯片型号不同，也可能有缓存）
+                const cachedFirmware = loadFirmwareCacheFromStorage(detectedChip);
+                if (cachedFirmware && Object.keys(cachedFirmware).length > 0) {
+                  firmwareCache = cachedFirmware;
+                  log(`Loaded ${Object.keys(cachedFirmware).length} firmware files from localStorage cache`, 'success');
+                } else {
+                  firmwareCache = {}; // 没有缓存，清空缓存准备重新下载
+                }
+                lastChipModel = detectedChip; // 更新芯片型号
+              }
+              
               // 隐藏进度条，显示成功
               clearInterval(progressInterval);
               if (bootProgBox) bootProgBox.style.display = 'none';
@@ -1115,16 +1310,6 @@ async function enterUpgradeModeForConnection() {
                 chipInfo.style.color = '#2e7d32';
                 chipInfo.style.fontSize = '13px';
                 chipInfo.style.marginTop = '4px';
-              }
-              
-              // 更新芯片自动检测信息
-              const chipAutoDetectInfo = document.getElementById('chipAutoDetectInfo');
-              if (chipAutoDetectInfo) {
-                chipAutoDetectInfo.textContent = `Auto-detected chip: ${detectedChip}`;
-                chipAutoDetectInfo.style.color = '#4caf50';
-                chipAutoDetectInfo.style.fontStyle = 'normal';
-                chipAutoDetectInfo.style.fontWeight = '600';
-                chipAutoDetectInfo.style.fontSize = '12px';
               }
               
               // 自动加载对应芯片的固件列表
@@ -1902,11 +2087,25 @@ async function startUpdate() {
   }
   updateProgress(0);
   
-  try {
-    currentState = 'flashing';
+  // 创建5分钟超时Promise
+  const UPGRADE_TIMEOUT = 3 * 60 * 1000; // 5分钟
+  // 清除之前的超时计时器（如果存在）
+  if (upgradeTimeoutId) {
+    clearTimeout(upgradeTimeoutId);
+    upgradeTimeoutId = null;
+  }
+  const timeoutPromise = new Promise((_, reject) => {
+    upgradeTimeoutId = setTimeout(() => {
+      reject(new Error('Upgrade timeout: The upgrade process exceeded 5 minutes. This may be caused by device disconnection, transmission errors, or other issues. Please check the device connection and try again.'));
+    }, UPGRADE_TIMEOUT);
+  });
+  
+  // 升级流程Promise
+  const upgradePromise = (async () => {
     // 设备已经在boot模式，直接开始传输文件
     log('Starting upgrade process...', 'info');
     log(`Reader status: ${reader ? 'OK' : 'Not initialized'}, Writer status: ${writer ? 'OK' : 'Not initialized'}`, 'info');
+    log(`Upgrade timeout set to ${UPGRADE_TIMEOUT / 1000} seconds (5 minutes)`, 'info');
     
     // 重新进入升级模式（发送"1\r\n"，等待"begin upload"）
     await enterUpgradeMode();
@@ -1942,6 +2141,17 @@ async function startUpdate() {
     log(`Starting transfer: ${firmwareFileName} (${firmwareBytes.length} bytes, ${(firmwareBytes.length / 1024).toFixed(2)} KB)`, 'info');
     log(`Final verification: firmwareBytes exists=${!!firmwareBytes}, length=${firmwareBytes ? firmwareBytes.length : 0}`, 'info');
     await sendXModem(firmwareBytes);
+  })();
+  
+  try {
+    // 使用Promise.race同时运行升级流程和超时计时器
+    await Promise.race([upgradePromise, timeoutPromise]);
+    
+    // 如果升级成功，清除超时计时器
+    if (upgradeTimeoutId) {
+      clearTimeout(upgradeTimeoutId);
+      upgradeTimeoutId = null;
+    }
     
     updateProgress(100);
     const upgradeStatus = document.getElementById('upgradeStatus');
@@ -1950,23 +2160,124 @@ async function startUpdate() {
       upgradeStatus.className = 'upgrade-status success';
     }
     log('Upgrade successful!', 'success');
-    currentState = 'flash_success';
+    
+    // 升级成功后，保存固件缓存到localStorage（保留已下载的固件信息）
+    if (selectedChip && firmwareCache && Object.keys(firmwareCache).length > 0) {
+      log('Saving firmware cache to localStorage for future use...', 'info');
+      saveFirmwareCacheToStorage(selectedChip, firmwareCache);
+      lastChipModel = selectedChip; // 更新芯片型号
+    }
+    
+    // 升级成功后，还原状态但保留固件缓存
+    currentState = 'ready';
+    
+    // 清空当前选择的固件信息（但保留缓存）
+    firmwareBytes = null;
+    firmwareFileName = '';
+    githubFirmwareUrl = null;
+    
+    // 清空固件选择下拉框
+    const verList = document.getElementById('verList');
+    if (verList) {
+      verList.value = '';
+    }
+    
+    // 隐藏固件状态栏
+    const firmwareStatus = document.getElementById('firmwareStatus');
+    if (firmwareStatus) {
+      firmwareStatus.style.display = 'none';
+    }
+    
+    log('Firmware cache saved, ready for next upgrade', 'info');
   } catch (e) {
+    // 清除超时计时器（如果还存在）
+    if (upgradeTimeoutId) {
+      clearTimeout(upgradeTimeoutId);
+      upgradeTimeoutId = null;
+    }
+    
+    // 检查是否是超时错误
+    const isTimeout = e.message && e.message.includes('Upgrade timeout');
+    
     log('Upgrade failed: ' + e.message, 'error');
-    if (e.stack) {
+    if (e.stack && !isTimeout) {
       log('Error stack: ' + e.stack.split('\n')[0], 'error');
     }
+    
     updateProgress(0);
-    currentState = 'flash_failed';
+    
+    // 更新升级状态显示（红色字体提示）
+    const upgradeStatus = document.getElementById('upgradeStatus');
+    if (upgradeStatus) {
+      if (isTimeout) {
+        upgradeStatus.textContent = 'Upgrade timeout: Please check device connection and try again';
+        upgradeStatus.className = 'upgrade-status error';
+      } else {
+        upgradeStatus.textContent = 'Upgrade failed: ' + e.message;
+        upgradeStatus.className = 'upgrade-status error';
+      }
+    }
+    
+    // currentState = 'flash_failed';
+    currentState = 'ready';
+    
+    // 升级失败后，也保存固件缓存到localStorage（保留已下载的固件信息）
+    if (selectedChip && firmwareCache && Object.keys(firmwareCache).length > 0) {
+      log('Saving firmware cache to localStorage for future use (upgrade failed but firmware downloaded)...', 'info');
+      saveFirmwareCacheToStorage(selectedChip, firmwareCache);
+      lastChipModel = selectedChip; // 更新芯片型号
+    }
+    
+    // 清空当前选择的固件信息（但保留缓存）
+    firmwareBytes = null;
+    firmwareFileName = '';
+    githubFirmwareUrl = null;
+    
+    // 清空固件选择下拉框
+    const verList = document.getElementById('verList');
+    if (verList) {
+      verList.value = '';
+    }
+    
+    // 隐藏固件状态栏
+    const firmwareStatus = document.getElementById('firmwareStatus');
+    if (firmwareStatus) {
+      firmwareStatus.style.display = 'none';
+    }
+    
+    log('Firmware cache saved, ready for next upgrade', 'info');
   } finally {
+    // 确保清除超时计时器
+    if (upgradeTimeoutId) {
+      clearTimeout(upgradeTimeoutId);
+      upgradeTimeoutId = null;
+    }
+    
     updating = false;
     document.getElementById('btnUpd').style.display = 'inline-block';
     document.getElementById('btnCan').style.display = 'none';
+    
+    // 升级完成后（无论成功或失败），自动断开串口并释放资源
+    if (port) {
+      log('Upgrade completed, automatically disconnecting serial port...', 'info');
+      // 异步断开串口，不阻塞finally块的执行
+      disconnectPort().catch(e => {
+        log(`Error disconnecting port after upgrade: ${e.message}`, 'error');
+      });
+    }
   }
 }
 
 function cancelUpdate() {
   updating = false;
+  
+  // 清除超时计时器（如果存在）
+  if (upgradeTimeoutId) {
+    clearTimeout(upgradeTimeoutId);
+    upgradeTimeoutId = null;
+    log('Upgrade timeout timer cleared', 'info');
+  }
+  
   log('User cancelled upgrade', 'info');
   document.getElementById('btnUpd').style.display = 'inline-block';
   document.getElementById('btnCan').style.display = 'none';
@@ -1989,6 +2300,50 @@ window.onload = () => {
   currentState = 'ready';
   // 不再默认选择芯片，等待自动检测
   selectedChip = null;
+  
+  // 根据开发模式开关控制状态日志栏的显示（仅开发用）
+  const statusLogSection = document.getElementById('statusLogSection');
+  if (statusLogSection) {
+    if (DEV_MODE_ENABLE_LOG) {
+      statusLogSection.style.display = 'block';
+    } else {
+      statusLogSection.style.display = 'none';
+    }
+  }
+  
+  // 确保debug mode checkbox默认不勾选
+  const debugModeCheckbox = document.getElementById('debugMode');
+  if (debugModeCheckbox) {
+    debugModeCheckbox.checked = false;
+    
+    // 添加监听器，当勾选debug mode时显示提示
+    debugModeCheckbox.addEventListener('change', (e) => {
+      if (e.target.checked) {
+        // 勾选后显示一条提示信息
+        const box = document.getElementById('logBox');
+        if (box) {
+          const line = document.createElement('div');
+          line.className = 'log-entry info';
+          line.textContent = `[${new Date().toLocaleTimeString()}] Debug mode enabled. Logs will be displayed from now on.`;
+          box.appendChild(line);
+          box.scrollTop = box.scrollHeight;
+        }
+      } else {
+        // 取消勾选时清空日志（可选，或者保留之前的日志）
+        // 这里选择保留日志，只是不再显示新的日志
+      }
+    });
+  }
+  
+  // 从localStorage加载上次的芯片型号
+  try {
+    lastChipModel = localStorage.getItem(STORAGE_CHIP_KEY);
+    if (lastChipModel) {
+      log(`Loaded last chip model from localStorage: ${lastChipModel}`, 'info');
+    }
+  } catch (e) {
+    log(`Failed to load last chip model from localStorage: ${e.message}`, 'error');
+  }
   // 启动串口监听
   startPortWatcher();
 };
