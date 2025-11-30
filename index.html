@@ -137,17 +137,17 @@ input[type=checkbox]{margin-right:5px;cursor:pointer}
 </div>
 
 <script>
-/* ========== 配置 ========== */
-// GitHub固件仓库地址
+/* ========== Configuration ========== */
+// GitHub firmware repository URL
 const GITHUB_REPO_BASE = 'https://api.github.com/repos/lincukoo/dongle/contents/firmware';
-// 开发模式开关：设置为 true 可显示状态日志栏（仅开发用）
-const DEV_MODE_ENABLE_LOG = false; // 修改为 true 可显示日志栏
+// Development mode switch: set to true to display status log panel (development only)
+const DEV_MODE_ENABLE_LOG = false; // Change to true to display log panel
 let selectedChip = null; // 'MG21' or 'MG24'
 let currentState = 'ready'; // 'ready', 'boot', 'downloading', 'download_success', 'download_failed', 'flashing', 'flash_success', 'flash_failed'
 
-/* ========== 全局变量 ========== */
-// 注意：reader是全局变量，在connectPort中创建，其他地方直接使用
-// 如果reader done了，重新获取后要更新这个全局变量
+/* ========== Global Variables ========== */
+// Note: reader is a global variable, created in connectPort, used directly elsewhere
+// If reader is done, update this global variable after re-acquiring
 let port = null;
 let reader = null;
 let writer = null;
@@ -156,17 +156,17 @@ let cnt = 0;
 let firmwareBytes = null;
 let firmwareFileName = '';
 let githubFirmwareUrl = null;
-let firmwareCache = {}; // 存储所有已下载的固件文件，key: fileName, value: Uint8Array
-let upgradeTimeoutId = null; // 升级超时计时器ID
-let lastChipModel = null; // 上次检测到的芯片型号
+let firmwareCache = {}; // Store all downloaded firmware files, key: fileName, value: Uint8Array
+let upgradeTimeoutId = null; // Upgrade timeout timer ID
+let lastChipModel = null; // Last detected chip model
 
-/* ========== 日志 ========== */
+/* ========== Logging ========== */
 function log(msg, type = 'info') {
   const isDebugMode = document.getElementById('debugMode')?.checked || false;
-  if (!isDebugMode) return; // 如果未勾选debug mode，不显示日志
+  if (!isDebugMode) return; // If debug mode is not checked, do not display logs
   
   const box = document.getElementById('logBox');
-  if (!box) return; // 如果日志栏不存在（已隐藏），直接返回
+  if (!box) return; // If log box does not exist (hidden), return directly
   
   const line = document.createElement('div');
   line.className = 'log-entry ' + type;
@@ -187,15 +187,15 @@ function logRawData(data, prefix = '') {
 
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-/* ========== localStorage 固件缓存管理 ========== */
-// localStorage key前缀
+/* ========== localStorage Firmware Cache Management ========== */
+// localStorage key prefix
 const STORAGE_PREFIX = 'firmware_cache_';
 const STORAGE_CHIP_KEY = 'last_chip_model';
-const STORAGE_MAX_SIZE = 10 * 1024 * 1024; // 4MB限制，避免超过localStorage限制
+const STORAGE_MAX_SIZE = 10 * 1024 * 1024; // 10MB limit, avoid exceeding localStorage limit
 
-// 将Uint8Array转换为base64字符串
+// Convert Uint8Array to base64 string
 function uint8ArrayToBase64(uint8Array) {
-  const chunkSize = 8192; // 分块处理，避免栈溢出
+  const chunkSize = 8192; // Process in chunks to avoid stack overflow
   let result = '';
   for (let i = 0; i < uint8Array.length; i += chunkSize) {
     const chunk = uint8Array.slice(i, i + chunkSize);
@@ -205,7 +205,7 @@ function uint8ArrayToBase64(uint8Array) {
   return result;
 }
 
-// 将base64字符串转换为Uint8Array
+// Convert base64 string to Uint8Array
 function base64ToUint8Array(base64) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -215,7 +215,7 @@ function base64ToUint8Array(base64) {
   return bytes;
 }
 
-// 保存固件缓存到localStorage
+// Save firmware cache to localStorage
 function saveFirmwareCacheToStorage(chipModel, cache) {
   try {
     if (!chipModel || !cache || Object.keys(cache).length === 0) {
@@ -223,7 +223,7 @@ function saveFirmwareCacheToStorage(chipModel, cache) {
       return;
     }
     
-    // 计算总大小
+    // Calculate total size
     let totalSize = 0;
     const cacheData = {};
     for (const [fileName, data] of Object.entries(cache)) {
@@ -231,7 +231,7 @@ function saveFirmwareCacheToStorage(chipModel, cache) {
       const size = base64.length;
       totalSize += size;
       
-      // 如果超过限制，不保存
+      // If exceeds limit, do not save
       if (totalSize > STORAGE_MAX_SIZE) {
         log(`Firmware cache too large (${(totalSize / 1024 / 1024).toFixed(2)} MB), skipping save to localStorage`, 'warning');
         return;
@@ -244,10 +244,10 @@ function saveFirmwareCacheToStorage(chipModel, cache) {
       };
     }
     
-    // 保存芯片型号
+    // Save chip model
     localStorage.setItem(STORAGE_CHIP_KEY, chipModel);
     
-    // 保存固件缓存（每个文件单独存储，避免单个key过大）
+    // Save firmware cache (each file stored separately to avoid single key being too large)
     for (const [fileName, fileData] of Object.entries(cacheData)) {
       const key = STORAGE_PREFIX + chipModel + '_' + fileName;
       try {
@@ -256,7 +256,7 @@ function saveFirmwareCacheToStorage(chipModel, cache) {
       } catch (e) {
         if (e.name === 'QuotaExceededError') {
           log(`localStorage quota exceeded, cannot save ${fileName}`, 'warning');
-          // 清理旧的缓存
+          // Clear old cache
           clearOldFirmwareCache();
           return;
         }
@@ -270,21 +270,21 @@ function saveFirmwareCacheToStorage(chipModel, cache) {
   }
 }
 
-// 从localStorage加载固件缓存
+// Load firmware cache from localStorage
 function loadFirmwareCacheFromStorage(chipModel) {
   try {
     if (!chipModel) {
       return null;
     }
     
-    // 检查芯片型号是否匹配
+    // Check if chip model matches
     const lastChip = localStorage.getItem(STORAGE_CHIP_KEY);
     if (lastChip !== chipModel) {
       log(`Chip model mismatch: last=${lastChip}, current=${chipModel}, skipping cache load`, 'info');
       return null;
     }
     
-    // 查找所有匹配的固件文件
+    // Find all matching firmware files
     const cache = {};
     const keys = Object.keys(localStorage);
     const prefix = STORAGE_PREFIX + chipModel + '_';
@@ -316,13 +316,13 @@ function loadFirmwareCacheFromStorage(chipModel) {
   }
 }
 
-// 清理旧的固件缓存（当存储空间不足时）
+// Clear old firmware cache (when storage space is insufficient)
 function clearOldFirmwareCache() {
   try {
     const keys = Object.keys(localStorage);
     const firmwareKeys = keys.filter(k => k.startsWith(STORAGE_PREFIX));
     
-    // 按时间戳排序，删除最旧的
+    // Sort by timestamp, delete oldest
     const keyTimestamps = [];
     for (const key of firmwareKeys) {
       try {
@@ -331,13 +331,13 @@ function clearOldFirmwareCache() {
           keyTimestamps.push({ key, timestamp: data.timestamp });
         }
       } catch (e) {
-        // 忽略解析错误
+        // Ignore parse errors
       }
     }
     
     keyTimestamps.sort((a, b) => a.timestamp - b.timestamp);
     
-    // 删除最旧的一半
+    // Delete oldest half
     const toDelete = Math.floor(keyTimestamps.length / 2);
     for (let i = 0; i < toDelete; i++) {
       localStorage.removeItem(keyTimestamps[i].key);
@@ -348,7 +348,7 @@ function clearOldFirmwareCache() {
   }
 }
 
-// 清理指定芯片的固件缓存
+// Clear firmware cache for specified chip
 function clearFirmwareCacheForChip(chipModel) {
   try {
     if (!chipModel) return;
@@ -380,11 +380,11 @@ function updateProgress(p) {
 }
 
 
-// 检查升级条件，返回 { canUpgrade: boolean, errorMessage: string }
-// 按顺序检查：1. boot模式 2. 固件选择 3. 固件下载
+// Check upgrade conditions, returns { canUpgrade: boolean, errorMessage: string }
+// Check in order: 1. boot mode 2. firmware selection 3. firmware download
 function checkUpgradeConditions() {
-  // 条件1: 检查是否已进入bootloader mode
-  // 状态检查：currentState === 'boot'
+  // Condition 1: Check if device has entered bootloader mode
+  // State check: currentState === 'boot'
   if (currentState == 'ready') {
     return {
       canUpgrade: false,
@@ -392,8 +392,8 @@ function checkUpgradeConditions() {
     };
   }
   
-  // 条件2: 检查是否已选择具体要升级的固件
-  // 状态检查：firmwareFileName 不为空
+  // Condition 2: Check if firmware has been selected
+  // State check: firmwareFileName is not empty
   if (!firmwareFileName || firmwareFileName === '') {
     return {
       canUpgrade: false,
@@ -401,8 +401,8 @@ function checkUpgradeConditions() {
     };
   }
   
-  // 条件3: 检查固件是否已从GitHub下载完成
-  // 状态检查：currentState === 'download_success' 且 firmwareBytes 不为空
+  // Condition 3: Check if firmware has been downloaded from GitHub
+  // State check: currentState === 'download_success' and firmwareBytes is not empty
   if (currentState !== 'download_success') {
     if (currentState === 'downloading') {
       return {
@@ -418,7 +418,7 @@ function checkUpgradeConditions() {
   }
   
   if (!firmwareBytes || firmwareBytes.length === 0) {
-    // 尝试从缓存中重新加载
+    // Try to reload from cache
     if (firmwareFileName && firmwareCache[firmwareFileName]) {
       log(`Firmware data missing, reloading from cache: ${firmwareFileName}`, 'warning');
       firmwareBytes = firmwareCache[firmwareFileName];
@@ -432,14 +432,14 @@ function checkUpgradeConditions() {
     }
   }
   
-  // 所有条件满足
+  // All conditions met
   return {
     canUpgrade: true,
     errorMessage: ''
   };
 }
 
-// 处理Flash按钮点击事件
+// Handle Flash button click event
 function handleFlashClick(event) {
   const btnUpd = document.getElementById('btnUpd');
   if (!btnUpd) {
@@ -447,35 +447,35 @@ function handleFlashClick(event) {
     return;
   }
   
-  // 检查升级条件
+  // Check upgrade conditions
   const conditions = checkUpgradeConditions();
   
-  // 如果条件不满足，显示原因并返回
+  // If conditions not met, show reason and return
   if (!conditions.canUpgrade) {
     log(`Flash button clicked but conditions not met: ${conditions.errorMessage}`, 'warning');
-    // 不显示状态，因为这是升级条件检查，不是固件列表加载状态
+    // Do not show status, as this is upgrade condition check, not firmware list loading status
     return;
   }
   
-  // 条件满足，执行升级
+  // Conditions met, execute upgrade
   log('Flash button clicked, all conditions met, starting upgrade...', 'info');
   startUpdate();
 }
 
 
-// 更新固件下载状态显示（在下拉框中动态显示3种状态）
+// Update firmware download status display (dynamically display 3 states in dropdown)
 function updateFirmwareStatus(state) {
   const sel = document.getElementById('verList');
   if (!sel) return;
   
   if (state === 'loading') {
-    // 状态1: Loading firmware list...
+    // State 1: Loading firmware list...
     sel.innerHTML = '<option value="">Loading firmware list...</option>';
     sel.disabled = true;
     sel.style.background = '';
     sel.style.borderColor = '';
   } else if (state === 'ready') {
-    // 状态2: Please select version（只更新第一个选项的文本，保留其他选项）
+    // State 2: Please select version (only update first option text, keep other options)
     if (sel.options.length > 0) {
       sel.options[0].textContent = 'Please select version';
     } else {
@@ -485,24 +485,24 @@ function updateFirmwareStatus(state) {
     sel.style.background = '';
     sel.style.borderColor = '';
   } else if (state === 'failed') {
-    // 状态3: Failed to load firmware list, please  refresh the webpage
-    sel.innerHTML = '<option value="">Failed to load firmware list, please  refresh the webpage.</option>';
+    // State 3: Failed to load firmware list, please refresh the webpage
+    sel.innerHTML = '<option value="">Failed to load firmware list, please refresh the webpage.</option>';
     sel.disabled = false;
-    // 设置下拉框为粉红色背景（失败状态）
+    // Set dropdown to pink background (failed state)
     sel.style.background = '#fce4ec';
     sel.style.borderColor = '#f48fb1';
   } else {
-    // 其他状态，恢复默认样式
+    // Other states, restore default style
     sel.style.background = '';
     sel.style.borderColor = '';
   }
 }
 
-// 更新芯片选择（用于自动检测）
+// Update chip selection (for auto-detection)
 function updateChipSelectionUI(chip) {
   selectedChip = chip;
   
-  // 清空固件选择
+  // Clear firmware selection
   const verList = document.getElementById('verList');
   if (verList) {
     verList.innerHTML = '<option value="">Loading firmware list...</option>';
@@ -514,8 +514,8 @@ function updateChipSelectionUI(chip) {
   log(`Auto-detected chip: ${chip}`, 'info');
 }
 
-/* ========== GitHub 版本列表 ========== */
-let firmwareFiles = []; // 存储固件列表数据
+/* ========== GitHub Version List ========== */
+let firmwareFiles = []; // Store firmware list data
 
 async function loadVersions() {
   if (currentState == 'ready') {
@@ -529,7 +529,7 @@ async function loadVersions() {
   
   const GITHUB_API = `${GITHUB_REPO_BASE}/${selectedChip}`;
   
-  // 状态1: Loading firmware list...
+  // State 1: Loading firmware list...
   updateFirmwareStatus('loading');
   
   try {
@@ -551,7 +551,7 @@ async function loadVersions() {
     const data = await r.json();
     log(`GitHub API response received, type: ${typeof data}, isArray: ${Array.isArray(data)}`, 'info');
     
-    // 检查响应格式
+    // Check response format
     if (!Array.isArray(data)) {
       log(`Invalid GitHub API response format: expected array, got ${typeof data}. Response: ${JSON.stringify(data).substring(0, 200)}`, 'error');
       throw new Error('Invalid response format: expected array');
@@ -559,7 +559,7 @@ async function loadVersions() {
     
     log(`Found ${data.length} items in GitHub repository`, 'info');
     
-    // 过滤并排序固件文件
+    // Filter and sort firmware files
     firmwareFiles = data.filter(f => f.name && (f.name.endsWith('.gbl') || f.name.endsWith('.bin')))
       .map(f => ({
         name: f.name,
@@ -579,15 +579,15 @@ async function loadVersions() {
       return;
     }
     
-    // 点击refresh时，强制从GitHub重新下载，不使用缓存
-    firmwareCache = {}; // 清空缓存，强制重新下载
+    // When clicking refresh, force re-download from GitHub, do not use cache
+    firmwareCache = {}; // Clear cache, force re-download
     
-    // 自动下载所有固件文件
+    // Automatically download all firmware files
     log(`Starting to download all ${firmwareFiles.length} firmware files from GitHub...`, 'info');
     currentState = 'downloading';
     await downloadAllFirmwareFiles();
     
-    // 下载完成后，更新下拉框和状态
+    // After download completes, update dropdown and status
     sel.innerHTML = '<option value="">Please select version</option>';
     firmwareFiles.forEach(f => {
       const opt = document.createElement('option');
@@ -600,7 +600,7 @@ async function loadVersions() {
     });
     sel.disabled = false;
     
-    // 状态2: Please select version
+    // State 2: Please select version
     updateFirmwareStatus('ready');
     currentState = 'download_success';
     
@@ -612,20 +612,20 @@ async function loadVersions() {
     sel.innerHTML = '<option value="">Load failed</option>';
     sel.disabled = false;
     firmwareFiles = [];
-    // 状态3: Failed to Load firmware list
+    // State 3: Failed to Load firmware list
     updateFirmwareStatus('failed');
     currentState = 'download_failed';
   }
 }
 
-// 下载所有固件文件到缓存（强制从GitHub重新下载）
+// Download all firmware files to cache (force re-download from GitHub)
 async function downloadAllFirmwareFiles() {
   if (firmwareFiles.length === 0) {
     log('No firmware files to download', 'warning');
     return;
   }
   
-  // 强制下载所有文件，不使用缓存
+  // Force download all files, do not use cache
   let successCount = 0;
   let failCount = 0;
   const totalFiles = firmwareFiles.length;
@@ -646,7 +646,7 @@ async function downloadAllFirmwareFiles() {
       const chunks = [];
       let receivedLength = 0;
       
-      // 下载文件数据
+      // Download file data
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -655,7 +655,7 @@ async function downloadAllFirmwareFiles() {
         receivedLength += value.length;
       }
       
-      // 合并所有chunks
+      // Merge all chunks
       const allChunks = new Uint8Array(receivedLength);
       let position = 0;
       for (const chunk of chunks) {
@@ -663,7 +663,7 @@ async function downloadAllFirmwareFiles() {
         position += chunk.length;
       }
       
-      // 存储到缓存
+      // Store to cache
       firmwareCache[file.name] = allChunks;
       successCount++;
       log(`✓ Downloaded ${file.name} (${allChunks.length} bytes, ${(allChunks.length / 1024).toFixed(2)} KB)`, 'success');
@@ -673,37 +673,37 @@ async function downloadAllFirmwareFiles() {
     }
   }
   
-  // 下载完成后，更新缓存到localStorage
+  // After download completes, update cache to localStorage
   if (successCount > 0) {
     log(`Firmware download completed: ${successCount} downloaded, ${failCount} failed`, 'success');
     log(`Cache status: ${Object.keys(firmwareCache).length} files stored in cache: ${Object.keys(firmwareCache).join(', ')}`, 'success');
     
-    // 保存固件缓存到localStorage
+    // Save firmware cache to localStorage
     if (selectedChip && firmwareCache && Object.keys(firmwareCache).length > 0) {
       log('Saving firmware cache to localStorage...', 'info');
       saveFirmwareCacheToStorage(selectedChip, firmwareCache);
-      lastChipModel = selectedChip; // 更新芯片型号
+      lastChipModel = selectedChip; // Update chip model
     }
   }
   
   if (failCount > 0 && successCount === 0) {
-    // 所有下载都失败
+    // All downloads failed
     log(`All firmware downloads failed`, 'error');
     throw new Error('Failed to download firmware files');
   }
 }
 
 document.getElementById('verList').addEventListener('change', async e => {
-  // 允许选择固件的状态：
-  // - 'ready': 初始状态
-  // - 'entered_boot_mode' 或 'boot': 已进入boot模式
-  // - 'download_success': 固件已下载成功，允许重新选择
-  // - 'download_failed': 下载失败，允许重新选择
-  // - 'flash_success': 刷写成功，允许选择新固件进行下一次升级
-  // - 'flash_failed': 刷写失败，允许重新选择
-  // 不允许的状态：
-  // - 'downloading': 正在下载，不允许中断
-  // - 'flashing': 正在刷写，不允许中断
+  // States that allow firmware selection:
+  // - 'ready': Initial state
+  // - 'entered_boot_mode' or 'boot': Already entered boot mode
+  // - 'download_success': Firmware downloaded successfully, allow re-selection
+  // - 'download_failed': Download failed, allow re-selection
+  // - 'flash_success': Flash successful, allow selecting new firmware for next upgrade
+  // - 'flash_failed': Flash failed, allow re-selection
+  // States that do not allow:
+  // - 'downloading': Currently downloading, do not allow interruption
+  // - 'flashing': Currently flashing, do not allow interruption
   // if (!checkState(['ready', 'entered_boot_mode', 'boot', 'download_success', 'download_failed', 'flash_success', 'flash_failed'], 'select firmware version')) {
   //   e.target.value = '';
   //   return;
@@ -717,25 +717,25 @@ document.getElementById('verList').addEventListener('change', async e => {
     return;
   }
   
-  // 从dataset获取原始文件名（不包含大小信息）
+  // Get original file name from dataset (without size information)
   const selectedOption = e.target.selectedOptions[0];
-  const fileName = selectedOption.dataset.name || selectedOption.text.split(' (')[0]; // 如果没有dataset.name，从text中提取
+  const fileName = selectedOption.dataset.name || selectedOption.text.split(' (')[0]; // If no dataset.name, extract from text
   const fileSize = selectedOption.dataset.size;
   
-  // 固件选择完成，从缓存中获取对应的固件数据
-  firmwareFileName = fileName; // 使用原始文件名，不包含大小
+  // Firmware selection completed, get corresponding firmware data from cache
+  firmwareFileName = fileName; // Use original file name, without size
   githubFirmwareUrl = url;
   log(`Firmware selected: ${fileName}`, 'info');
   document.getElementById('fileInput').value = '';
   
-  // 从缓存中获取固件数据
+  // Get firmware data from cache
   if (firmwareCache[fileName]) {
     firmwareBytes = firmwareCache[fileName];
     const fileSizeKB = firmwareBytes.length / 1024;
     log(`✓ Firmware loaded from cache: ${fileName} (${firmwareBytes.length} bytes, ${fileSizeKB.toFixed(2)} KB)`, 'success');
     log(`✓ Firmware data is ready for flashing. firmwareBytes exists: ${!!firmwareBytes}, length: ${firmwareBytes.length}`, 'success');
     log(`✓ Cache status: ${Object.keys(firmwareCache).length} files in cache`, 'info');
-    // 选择固件后，保持 ready 状态
+    // After selecting firmware, keep ready state
     currentState = 'download_success';
   } else {
     log(`✗ Firmware not found in cache: ${fileName}`, 'error');
@@ -1334,7 +1334,7 @@ async function enterUpgradeMode() {
       try {
         const cmd = new TextEncoder().encode('1\r\n');
         await writer.write(cmd);
-        logRawData(cmd, '[发送] ');
+        logRawData(cmd, '[Send] ');
         // 等待一小段时间，让设备有时间响应
         await delay(100);
       } catch (e) {
@@ -1366,7 +1366,7 @@ async function enterUpgradeMode() {
         
         if (value && value.length > 0) {
           hasReceivedData = true;
-          logRawData(value, '[接收] ');
+          logRawData(value, '[Receive] ');
           const text = new TextDecoder('utf-8', { fatal: false }).decode(value);
           receivedData += text;
           
@@ -1462,7 +1462,7 @@ async function writePacket(n, dat) {
   // XModem-CRC数据包格式：SOH + 包序号 + 包序号补码 + 128字节数据 + CRC16(2字节)
   // 确保数据包正好是128字节
   if (dat.length !== 128) {
-    throw new Error(`数据包大小错误：期望128字节，实际${dat.length}字节`);
+    throw new Error(`Packet size error: expected 128 bytes, actual ${dat.length} bytes`);
   }
   
   const packetNum = n & 0xff;
@@ -1470,7 +1470,7 @@ async function writePacket(n, dat) {
   
   // 验证包序号和补码
   if ((packetNum + packetNumComplement) & 0xff !== 0xff) {
-    throw new Error(`包序号补码错误：包序号=${packetNum}, 补码=${packetNumComplement}`);
+    throw new Error(`Packet sequence complement error: packet number=${packetNum}, complement=${packetNumComplement}`);
   }
   
   const head = new Uint8Array([SOH, packetNum, packetNumComplement]);
@@ -1487,34 +1487,34 @@ async function writePacket(n, dat) {
   pkt[131] = crcHigh;
   pkt[132] = crcLow;
   
-  // 验证数据包格式
+  // Verify packet format
   if (pkt[0] !== SOH) {
-    throw new Error(`数据包格式错误：第一个字节应该是SOH(0x01)，实际是0x${pkt[0].toString(16).padStart(2, '0')}`);
+    throw new Error(`Packet format error: first byte should be SOH(0x01), actual 0x${pkt[0].toString(16).padStart(2, '0')}`);
   }
   if (pkt[1] !== packetNum) {
-    throw new Error(`数据包格式错误：包序号不匹配`);
+    throw new Error(`Packet format error: packet sequence number mismatch`);
   }
   if (pkt[2] !== packetNumComplement) {
-    throw new Error(`数据包格式错误：包序号补码不匹配`);
+    throw new Error(`Packet format error: packet sequence complement mismatch`);
   }
-  // 验证数据包格式：SOH + 包序号 + 补码 + 128字节数据 + 2字节CRC16 = 133字节
+  // Verify packet format: SOH + packet sequence + complement + 128 bytes data + 2 bytes CRC16 = 133 bytes
   if (pkt.length !== 133) {
-    throw new Error(`数据包长度错误：期望133字节，实际${pkt.length}字节`);
+    throw new Error(`Packet length error: expected 133 bytes, actual ${pkt.length} bytes`);
   }
   if (pkt[0] !== SOH) {
-    throw new Error(`数据包格式错误：第一个字节应该是SOH(0x01)，实际是0x${pkt[0].toString(16).padStart(2, '0')}`);
+    throw new Error(`Packet format error: first byte should be SOH(0x01), actual 0x${pkt[0].toString(16).padStart(2, '0')}`);
   }
   if (pkt[1] !== packetNum) {
-    throw new Error(`数据包格式错误：包序号不匹配，期望${packetNum}，实际${pkt[1]}`);
+    throw new Error(`Packet format error: packet sequence number mismatch, expected ${packetNum}, actual ${pkt[1]}`);
   }
   if (pkt[2] !== packetNumComplement) {
-    throw new Error(`数据包格式错误：包序号补码不匹配，期望${packetNumComplement}，实际${pkt[2]}`);
+    throw new Error(`Packet format error: packet sequence complement mismatch, expected ${packetNumComplement}, actual ${pkt[2]}`);
   }
   
-  // 确保一次性发送完整数据包（133字节）
-  // 在发送前再次验证第一个字节
+  // Ensure sending complete packet (133 bytes) at once
+  // Verify first byte again before sending
   if (pkt[0] !== 0x01) {
-    throw new Error(`发送前验证失败：数据包第一个字节不是0x01，实际是0x${pkt[0].toString(16).padStart(2, '0')}`);
+    throw new Error(`Pre-send verification failed: packet first byte is not 0x01, actual 0x${pkt[0].toString(16).padStart(2, '0')}`);
   }
   
   // 确保writer准备好，然后一次性写入完整数据包
@@ -1535,9 +1535,9 @@ async function writePacket(n, dat) {
   // 等待writer准备好，确保新的writer已初始化
   await writer.ready;
   
-  // 验证数据包已发送（通过检查pkt数组，确保没有被修改）
+  // Verify packet has been sent (by checking pkt array to ensure it hasn't been modified)
   if (pkt[0] !== SOH) {
-    throw new Error(`发送后验证失败：数据包第一个字节被修改，应该是SOH(0x01)，实际是0x${pkt[0].toString(16).padStart(2, '0')}`);
+    throw new Error(`Post-send verification failed: packet first byte was modified, should be SOH(0x01), actual 0x${pkt[0].toString(16).padStart(2, '0')}`);
   }
   
   // 数据包已发送，等待ACK（不打印详细日志，避免日志过多）
@@ -1592,7 +1592,7 @@ async function sendXModem(data) {
       ]);
       if (done) break;
       if (value) {
-        logRawData(value, '[XModem启动信号] ');
+        logRawData(value, '[XModem start signal] ');
         for (let i = 0; i < value.length; i++) {
           if (value[i] === NAK || value[i] === 0x43) { // NAK (0x15) 或 'C' (0x43)
             startSignalReceived = true;
@@ -1632,33 +1632,33 @@ async function sendXModem(data) {
     // 复制实际数据到填充数组
     pad.set(chunk, 0);
     
-    // 验证数据包大小
+    // Verify packet size
     if (pad.length !== 128) {
-      throw new Error(`数据包填充错误：期望128字节，实际${pad.length}字节`);
+      throw new Error(`Packet padding error: expected 128 bytes, actual ${pad.length} bytes`);
     }
     
-    // 验证数据是否正确填充
+    // Verify data is correctly padded
     const actualDataBytes = pad.slice(0, chunkSize);
     const paddingBytes = pad.slice(chunkSize);
     if (!actualDataBytes.every((b, i) => b === chunk[i])) {
-      throw new Error(`数据复制错误`);
+      throw new Error(`Data copy error`);
     }
     if (!paddingBytes.every(b => b === 0x1A)) {
-      throw new Error(`填充数据错误：应该全部是0x1A`);
+      throw new Error(`Padding data error: should all be 0x1A`);
     }
     
     let ok = false;
     retries = 10;
-    const expectedPacketNum = num; // 记录期望的包序号
+    const expectedPacketNum = num; // Record expected packet number
     while (retries-- && !ok && updating) {
-      // 验证包序号没有变化
+      // Verify packet number hasn't changed
       if (num !== expectedPacketNum) {
-        throw new Error(`包序号错误：期望${expectedPacketNum}，实际${num}`);
+        throw new Error(`Packet sequence number error: expected ${expectedPacketNum}, actual ${num}`);
       }
       
-      // 验证数据包长度
+      // Verify packet length
       if (pad.length !== 128) {
-        throw new Error(`数据包长度错误：期望128字节，实际${pad.length}字节`);
+        throw new Error(`Packet length error: expected 128 bytes, actual ${pad.length} bytes`);
       }
       
       await writePacket(num, pad);
@@ -1695,8 +1695,8 @@ async function sendXModem(data) {
                 log(`Received NAK (0x15), resending packet ${num}...`, 'info');
                 break; // 立即重发，退出等待循环
               } else if (value[i] === CAN) {
-                // 0x18为CAN，传输被取消
-                throw new Error('收到CAN信号 (0x18)，传输被取消');
+                // 0x18 is CAN, transmission cancelled
+                throw new Error('Received CAN signal (0x18), transmission cancelled');
               }
               // 其他数据忽略，继续等待ACK
             }
@@ -1735,10 +1735,10 @@ async function sendXModem(data) {
     }
     
     if (!ok) {
-      throw new Error(`数据包 ${num} 传输失败：未收到ACK(0x06)`);
+      throw new Error(`Packet ${num} transmission failed: ACK(0x06) not received`);
     }
     if (!updating) {
-      throw new Error('用户取消');
+      throw new Error('User cancelled operation');
     }
     
     // 只有在收到ACK后才递增包序号和偏移
@@ -1783,7 +1783,7 @@ async function sendXModemFromStream(stream, totalSize) {
       ]);
       if (done) break;
       if (value) {
-        logRawData(value, '[丢弃残留数据] ');
+        logRawData(value, '[Discard residual data] ');
       }
     }
   } catch (e) {
@@ -1799,7 +1799,7 @@ async function sendXModemFromStream(stream, totalSize) {
       ]);
       if (done) break;
       if (value) {
-        logRawData(value, '[XModem启动信号] ');
+        logRawData(value, '[XModem start signal] ');
         for (let i = 0; i < value.length; i++) {
           if (value[i] === NAK || value[i] === 0x43) { // NAK (0x15) 或 'C' (0x43)
             startSignalReceived = true;
@@ -1822,7 +1822,7 @@ async function sendXModemFromStream(stream, totalSize) {
   
   if (!startSignalReceived) {
     streamReader.releaseLock();
-    throw new Error('未收到XModem启动信号（NAK或C），无法开始传输');
+    throw new Error('XModem start signal (NAK or C) not received, cannot start transmission');
   }
   
   try {
@@ -1896,8 +1896,8 @@ async function sendXModemFromStream(stream, totalSize) {
         if (!ok && retries > 0) await delay(500);
       }
       
-      if (!ok) throw new Error(`数据包 ${num} 传输失败`);
-      if (!updating) throw new Error('用户取消');
+      if (!ok) throw new Error(`Packet ${num} transmission failed`);
+      if (!updating) throw new Error('User cancelled operation');
       
       num++;
       if (num > 255) num = 1; // 包序号循环
